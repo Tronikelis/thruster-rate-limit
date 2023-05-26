@@ -43,7 +43,7 @@ pub async fn rate_limit_middleware<
         return Err(ThrusterError {
             cause: None,
             context,
-            message: "Rate limit exceeded".to_string(),
+            message: format!("Rate limit exceeded, please wait {} seconds", per_s),
         });
     }
 
