@@ -1,4 +1,5 @@
-use redis::{aio::ConnectionManager, RedisResult};
+use async_trait::async_trait;
+use redis::{aio::ConnectionManager, AsyncCommands, RedisError, RedisResult};
 
 use super::Store;
 

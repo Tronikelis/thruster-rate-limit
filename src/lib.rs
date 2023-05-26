@@ -1,5 +1,5 @@
 use thruster::{
-    context::typed_hyper_context::TypedHyperContext, errors::ThrusterError, middleware_fn,
+    context::typed_hyper_context::TypedHyperContext, errors::ThrusterError, middleware_fn, Context,
     ContextState, MiddlewareNext, MiddlewareResult,
 };
 
@@ -13,6 +13,10 @@ pub struct RateLimiter<T: Store + Clone + Sync> {
     pub store: T,
 }
 
+pub trait Configuration<T: Send> {
+    fn should_limit(context: &TypedHyperContext<T>) -> bool;
+}
+
 #[middleware_fn]
 pub async fn rate_limit_middleware<
     T: Send + ContextState<RateLimiter<G>>,
@@ -21,8 +25,12 @@ pub async fn rate_limit_middleware<
     mut context: TypedHyperContext<T>,
     next: MiddlewareNext<TypedHyperContext<T>>,
 ) -> MiddlewareResult<TypedHyperContext<T>> {
-    let rate_limiter: &mut RateLimiter<G> = context.extra.get_mut();
-    let RateLimiter { store, max, per_s } = rate_limiter;
+    let rate_limiter: &RateLimiter<G> = context.extra.get_mut();
+    let RateLimiter {
+        mut store,
+        max,
+        per_s,
+    } = rate_limiter.clone();
 
     let key = "rate_limit:".to_string()
         + &context
@@ -38,7 +46,7 @@ pub async fn rate_limit_middleware<
     let current_count = current_count.unwrap_or(0);
     let new_count = current_count + 1;
 
-    if new_count > *max {
+    if new_count > max {
         context.status(429);
         return Err(ThrusterError {
             cause: None,
@@ -47,7 +55,7 @@ pub async fn rate_limit_middleware<
         });
     }
 
-    store.set(&key, new_count, *per_s).await.unwrap();
+    store.set(&key, new_count, per_s).await.unwrap();
 
     return next(context).await;
 }
