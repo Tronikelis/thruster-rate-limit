@@ -14,7 +14,8 @@ pub struct RateLimiter<T: Store + Clone + Sync> {
 }
 
 pub trait Configuration<T: Send> {
-    fn should_limit(context: &TypedHyperContext<T>) -> bool;
+    fn should_limit(&self, context: &TypedHyperContext<T>) -> bool;
+    fn get_key(&self, context: &TypedHyperContext<T>) -> String;
 }
 
 #[middleware_fn]
