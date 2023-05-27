@@ -1,7 +1,9 @@
+use std::sync::Arc;
 use thruster::{
     context::typed_hyper_context::TypedHyperContext, errors::ThrusterError, middleware_fn, Context,
     ContextState, MiddlewareNext, MiddlewareResult,
 };
+use thruster_jab::{fetch, JabDI};
 
 pub mod stores;
 use stores::Store;
@@ -20,12 +22,16 @@ pub trait Configuration<T: Send> {
 
 #[middleware_fn]
 pub async fn rate_limit_middleware<
-    T: Send + ContextState<RateLimiter<G>>,
+    T: Send + ContextState<RateLimiter<G>> + ContextState<Arc<JabDI>>,
     G: 'static + Store + Send + Sync + Clone,
 >(
     mut context: TypedHyperContext<T>,
     next: MiddlewareNext<TypedHyperContext<T>>,
 ) -> MiddlewareResult<TypedHyperContext<T>> {
+    // added these 2 lines
+    let di: &Arc<JabDI> = context.extra.get();
+    let configuration = fetch!(di.as_ref(), dyn Configuration<T>);
+
     let rate_limiter: &RateLimiter<G> = context.extra.get_mut();
     let RateLimiter {
         mut store,
