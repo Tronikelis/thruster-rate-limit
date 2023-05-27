@@ -10,17 +10,17 @@ pub mod stores;
 use stores::Store;
 
 #[derive(Clone)]
-pub struct RateLimiter<T: Store + Clone + Sync> {
+pub struct RateLimiter<S: Store + Clone + Sync> {
     pub max: usize,
     pub per_s: usize,
-    pub store: T,
+    pub store: S,
 }
 
-pub trait Configuration<T: Send> {
-    fn should_limit(&self, _context: &TypedHyperContext<T>) -> bool {
+pub trait Configuration<C: Send> {
+    fn should_limit(&self, _context: &TypedHyperContext<C>) -> bool {
         return true;
     }
-    fn get_key(&self, context: &TypedHyperContext<T>) -> String {
+    fn get_key(&self, context: &TypedHyperContext<C>) -> String {
         if_chain! {
             if let Some(request) = context.hyper_request.as_ref();
             if let Some(ip) = request.ip;
@@ -35,20 +35,20 @@ pub trait Configuration<T: Send> {
 
 #[middleware_fn]
 pub async fn rate_limit_middleware<
-    T: Send + ContextState<RateLimiter<G>> + ContextState<Arc<JabDI>>,
-    G: 'static + Store + Send + Sync + Clone,
+    C: Send + ContextState<RateLimiter<S>> + ContextState<Arc<JabDI>>,
+    S: 'static + Store + Send + Sync + Clone,
 >(
-    mut context: TypedHyperContext<T>,
-    next: MiddlewareNext<TypedHyperContext<T>>,
-) -> MiddlewareResult<TypedHyperContext<T>> {
+    mut context: TypedHyperContext<C>,
+    next: MiddlewareNext<TypedHyperContext<C>>,
+) -> MiddlewareResult<TypedHyperContext<C>> {
     let di: &Arc<JabDI> = context.extra.get();
-    let configuration = fetch!(di, dyn Configuration<T> + Sync);
+    let configuration = fetch!(di, dyn Configuration<C> + Sync);
 
     if !configuration.should_limit(&context) {
         return next(context).await;
     }
 
-    let rate_limiter: &RateLimiter<G> = context.extra.get();
+    let rate_limiter: &RateLimiter<S> = context.extra.get();
     let RateLimiter {
         mut store,
         max,
