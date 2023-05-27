@@ -1,3 +1,5 @@
+#![allow(clippy::needless_return)]
+
 use if_chain::if_chain;
 use std::sync::Arc;
 use thruster::{
