@@ -1,3 +1,4 @@
+use if_chain::if_chain;
 use std::sync::Arc;
 use thruster::{
     context::typed_hyper_context::TypedHyperContext, errors::ThrusterError, middleware_fn, Context,
@@ -16,8 +17,20 @@ pub struct RateLimiter<T: Store + Clone + Sync> {
 }
 
 pub trait Configuration<T: Send> {
-    fn should_limit(&self, context: &TypedHyperContext<T>) -> bool;
-    fn get_key(&self, context: &TypedHyperContext<T>) -> String;
+    fn should_limit(&self, _context: &TypedHyperContext<T>) -> bool {
+        return true;
+    }
+    fn get_key(&self, context: &TypedHyperContext<T>) -> String {
+        if_chain! {
+            if let Some(request) = context.hyper_request.as_ref();
+            if let Some(ip) = request.ip;
+            then {
+                return ip.to_string();
+            }
+        }
+
+        return "".to_string();
+    }
 }
 
 #[middleware_fn]
@@ -28,25 +41,21 @@ pub async fn rate_limit_middleware<
     mut context: TypedHyperContext<T>,
     next: MiddlewareNext<TypedHyperContext<T>>,
 ) -> MiddlewareResult<TypedHyperContext<T>> {
-    // added these 2 lines
     let di: &Arc<JabDI> = context.extra.get();
-    let configuration = fetch!(di.as_ref(), dyn Configuration<T>);
+    let configuration = fetch!(di, dyn Configuration<T> + Sync);
 
-    let rate_limiter: &RateLimiter<G> = context.extra.get_mut();
+    if !configuration.should_limit(&context) {
+        return next(context).await;
+    }
+
+    let rate_limiter: &RateLimiter<G> = context.extra.get();
     let RateLimiter {
         mut store,
         max,
         per_s,
     } = rate_limiter.clone();
 
-    let key = "rate_limit:".to_string()
-        + &context
-            .hyper_request
-            .as_ref()
-            .unwrap()
-            .ip
-            .unwrap()
-            .to_string();
+    let key = "rate-limit:".to_string() + &configuration.get_key(&context);
 
     let current_count: Option<usize> = store.get(&key).await.unwrap();
 

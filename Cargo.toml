@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 async-trait = "0.1.68"
+if_chain = "1.0.2"
 redis ={ version= "0.23.0", features = ["connection-manager", "tokio-comp"] }
 thruster = { version = "1.3.3", features = ["hyper_server"] }
 thruster-jab = "0.1.0"
