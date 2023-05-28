@@ -5,13 +5,15 @@ use thruster::{
     context::typed_hyper_context::TypedHyperContext, context_state, m, middleware_fn, testing, App,
     HyperRequest, MiddlewareNext, MiddlewareResult,
 };
-use thruster_jab::JabDI;
+use thruster_jab::{provide, JabDI};
 
-use thruster_rate_limit::{rate_limit_middleware, stores::map::MapStore, RateLimiter};
+use thruster_rate_limit::{
+    rate_limit_middleware, stores::map::MapStore, Configuration, RateLimiter,
+};
 
 struct ServerState {
-    di: Arc<JabDI>,
     rate_limiter: RateLimiter<MapStore>,
+    di: Arc<JabDI>,
 }
 
 #[context_state]
@@ -33,17 +35,29 @@ fn generate_context(request: HyperRequest, state: &ServerState, _path: &str) -> 
 
 #[tokio::test]
 async fn hello_world() {
+    let mut di = JabDI::default();
+
     let rate_limiter = RateLimiter {
         max: 100,
         per_s: 60,
         store: MapStore::new(),
     };
 
-    let di = Arc::new(JabDI::default());
+    struct RateLimiterConfiguration;
+    impl Configuration<RequestState> for RateLimiterConfiguration {}
+
+    provide!(
+        di,
+        dyn Configuration<RequestState> + Send + Sync,
+        RateLimiterConfiguration
+    );
 
     let mut app = App::<HyperRequest, Ctx, ServerState>::create(
         generate_context,
-        ServerState { di, rate_limiter },
+        ServerState {
+            rate_limiter,
+            di: Arc::new(di),
+        },
     )
     .middleware("/", m![rate_limit_middleware])
     .get("/", m![root]);
