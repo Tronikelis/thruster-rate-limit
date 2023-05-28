@@ -17,7 +17,7 @@ struct ServerState {
 }
 
 #[context_state]
-struct RequestState(RateLimiter<MapStore>, Arc<JabDI>);
+struct RequestState(Arc<JabDI>, RateLimiter<MapStore>);
 type Ctx = TypedHyperContext<RequestState>;
 
 #[middleware_fn]
@@ -29,7 +29,7 @@ async fn root(mut context: Ctx, _next: MiddlewareNext<Ctx>) -> MiddlewareResult<
 fn generate_context(request: HyperRequest, state: &ServerState, _path: &str) -> Ctx {
     return Ctx::new(
         request,
-        RequestState(state.rate_limiter.clone(), state.di.clone()),
+        RequestState(state.di.clone(), state.rate_limiter.clone()),
     );
 }
 
