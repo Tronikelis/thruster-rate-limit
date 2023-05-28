@@ -28,6 +28,12 @@ impl MapStore {
     }
 }
 
+impl Default for MapStore {
+    fn default() -> Self {
+        return Self::new();
+    }
+}
+
 #[async_trait]
 impl Store for MapStore {
     type Error = SystemTimeError;

@@ -1,3 +1,5 @@
+#![allow(clippy::needless_return)]
+
 use thruster::{
     context::typed_hyper_context::TypedHyperContext, errors::ThrusterError, middleware_fn, Context,
     ContextState, MiddlewareNext, MiddlewareResult,
@@ -7,40 +9,51 @@ pub mod stores;
 use stores::Store;
 
 #[derive(Clone)]
-pub struct RateLimiter<T: Store + Clone + Sync> {
+pub struct RateLimiter<S: Store + Clone> {
     pub max: usize,
     pub per_s: usize,
-    pub store: T,
+    pub store: S,
 }
 
-pub trait Configuration<T: Send> {
-    fn should_limit(&self, context: &TypedHyperContext<T>) -> bool;
-    fn get_key(&self, context: &TypedHyperContext<T>) -> String;
+pub trait Configuration<S: Send> {
+    fn should_limit(&self, _context: &TypedHyperContext<S>) -> bool {
+        return true;
+    }
+    fn get_key(&self, context: &TypedHyperContext<S>) -> String {
+        if let Some(request) = context.hyper_request.as_ref() {
+            if let Some(ip) = request.ip {
+                return ip.to_string();
+            }
+        }
+
+        return "".to_string();
+    }
 }
 
 #[middleware_fn]
 pub async fn rate_limit_middleware<
-    T: Send + ContextState<RateLimiter<G>>,
-    G: 'static + Store + Send + Sync + Clone,
+    T: Send + Sync + ContextState<RateLimiter<S>> + ContextState<Box<C>>,
+    S: 'static + Store + Send + Sync + Clone,
+    C: 'static + Configuration<T> + Sync,
 >(
     mut context: TypedHyperContext<T>,
     next: MiddlewareNext<TypedHyperContext<T>>,
 ) -> MiddlewareResult<TypedHyperContext<T>> {
-    let rate_limiter: &RateLimiter<G> = context.extra.get_mut();
+    #[allow(clippy::borrowed_box)]
+    let configuration: &Box<_> = context.extra.get();
+
+    if !configuration.should_limit(&context) {
+        return next(context).await;
+    }
+
+    let rate_limiter: &RateLimiter<S> = context.extra.get();
     let RateLimiter {
         mut store,
         max,
         per_s,
     } = rate_limiter.clone();
 
-    let key = "rate_limit:".to_string()
-        + &context
-            .hyper_request
-            .as_ref()
-            .unwrap()
-            .ip
-            .unwrap()
-            .to_string();
+    let key = "rate-limit:".to_string() + &configuration.get_key(&context);
 
     let current_count: Option<usize> = store.get(&key).await.unwrap();
 
