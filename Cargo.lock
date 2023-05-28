@@ -778,12 +778,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "thruster-jab"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3057c82c994ed670ce7e6a491022b90b47fbf75402676c0d500678465416a34d"
-
-[[package]]
 name = "thruster-proc"
 version = "1.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -803,7 +797,6 @@ dependencies = [
  "async-trait",
  "redis",
  "thruster",
- "thruster-jab",
  "tokio",
 ]
 

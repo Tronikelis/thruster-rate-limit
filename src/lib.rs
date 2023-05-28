@@ -1,27 +1,25 @@
 #![allow(clippy::needless_return)]
 
-use std::sync::Arc;
 use thruster::{
     context::typed_hyper_context::TypedHyperContext, errors::ThrusterError, middleware_fn, Context,
     ContextState, MiddlewareNext, MiddlewareResult,
 };
-use thruster_jab::{fetch, JabDI};
 
 pub mod stores;
 use stores::Store;
 
 #[derive(Clone)]
-pub struct RateLimiter<S: Store + Clone + Sync> {
+pub struct RateLimiter<S: Store + Clone> {
     pub max: usize,
     pub per_s: usize,
     pub store: S,
 }
 
-pub trait Configuration<State: Send> {
-    fn should_limit(&self, _context: &TypedHyperContext<State>) -> bool {
+pub trait Configuration<S: Send> {
+    fn should_limit(&self, _context: &TypedHyperContext<S>) -> bool {
         return true;
     }
-    fn get_key(&self, context: &TypedHyperContext<State>) -> String {
+    fn get_key(&self, context: &TypedHyperContext<S>) -> String {
         if let Some(request) = context.hyper_request.as_ref() {
             if let Some(ip) = request.ip {
                 return ip.to_string();
@@ -34,15 +32,15 @@ pub trait Configuration<State: Send> {
 
 #[middleware_fn]
 pub async fn rate_limit_middleware<
-    C: Send + Sync + ContextState<RateLimiter<S>> + ContextState<Arc<JabDI>>,
+    T: Send + Sync + ContextState<RateLimiter<S>> + ContextState<Box<C>>,
     S: 'static + Store + Send + Sync + Clone,
+    C: 'static + Configuration<T> + Sync,
 >(
-    mut context: TypedHyperContext<C>,
-    next: MiddlewareNext<TypedHyperContext<C>>,
-) -> MiddlewareResult<TypedHyperContext<C>> {
+    mut context: TypedHyperContext<T>,
+    next: MiddlewareNext<TypedHyperContext<T>>,
+) -> MiddlewareResult<TypedHyperContext<T>> {
     #[allow(clippy::borrowed_box)]
-    let di: &Arc<_> = context.extra.get();
-    let configuration = fetch!(di, dyn Configuration<C> + Sync);
+    let configuration: &Box<_> = context.extra.get();
 
     if !configuration.should_limit(&context) {
         return next(context).await;
