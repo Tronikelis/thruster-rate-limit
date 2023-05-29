@@ -122,7 +122,7 @@ pub struct MapStore {
 }
 ```
 
-Redis store:
+[needs `redis_store` feature] Redis store:
 ```rust
 #[derive(Clone)]
 pub struct RedisStore {
