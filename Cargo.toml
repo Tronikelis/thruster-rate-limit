@@ -2,8 +2,10 @@
 name = "thruster-rate-limit"
 version = "0.1.0"
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+authors = ["Tronikel <contactdonatas@gmail.com>"]
+license = "GPL-3.0-or-later"
+description = "A super simple rate limiting middleware for the thruster web framework"
+repository = "https://github.com/Tronikelis/thruster-rate-limit"
 
 [features]
 redis_store = ["dep:redis"]
