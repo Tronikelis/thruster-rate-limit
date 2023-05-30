@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use redis::{aio::ConnectionManager, AsyncCommands, RedisError, RedisResult};
 
-use super::Store;
+use crate::Store;
 
 #[derive(Clone)]
 pub struct RedisStore {

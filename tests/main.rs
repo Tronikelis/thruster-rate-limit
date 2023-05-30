@@ -6,7 +6,7 @@ use thruster::{
 };
 
 use thruster_rate_limit::{
-    rate_limit_middleware, stores::map::MapStore, Configuration, RateLimiter,
+    rate_limit_middleware, stores::map::MapStore, Configuration, Options, RateLimiter,
 };
 
 const BODY_STR: &str = "foo";
@@ -43,12 +43,7 @@ fn create_app(server_state: ServerState) -> App<HyperRequest, Ctx, ServerState> 
 
 #[tokio::test]
 async fn hello_world() {
-    let rate_limiter = RateLimiter {
-        max: 100,
-        per_s: 60,
-        routes: vec![],
-        store: MapStore::new(),
-    };
+    let rate_limiter = RateLimiter::default();
 
     let app = create_app(ServerState { rate_limiter })
         .get(ROUTE, m![root])
@@ -64,12 +59,7 @@ async fn hello_world() {
 
 #[tokio::test]
 async fn simple_block() {
-    let rate_limiter = RateLimiter {
-        max: 10,
-        per_s: 100,
-        routes: vec![],
-        store: MapStore::new(),
-    };
+    let rate_limiter = RateLimiter::new(Options { max: 10, per_s: 10 }, MapStore::new());
 
     let app = create_app(ServerState { rate_limiter })
         .get(ROUTE, m![root])
@@ -90,12 +80,11 @@ async fn simple_block() {
 
 #[tokio::test]
 async fn routes_option() {
-    let rate_limiter = RateLimiter {
-        max: 1,
-        per_s: 100,
-        routes: vec![("/foo".to_string(), 10), ("/user/:id".to_string(), 10)],
-        store: MapStore::new(),
-    };
+    let rate_limiter =
+        RateLimiter::new(Options::new(1, 100), MapStore::new()).override_routes(vec![
+            ("/foo".to_string(), Options::new(10, 10)),
+            ("/user/:id".to_string(), Options::new(10, 10)),
+        ]);
 
     let app = create_app(ServerState { rate_limiter })
         .get("/", m![root])
@@ -115,5 +104,12 @@ async fn routes_option() {
             .await
             .unwrap()
             .expect_status(if i == 10 { 429 } else { 200 }, "OK");
+    }
+
+    for i in 0..2 {
+        Testable::get(&app, "/", vec![])
+            .await
+            .unwrap()
+            .expect_status(if i == 1 { 429 } else { 200 }, "OK");
     }
 }

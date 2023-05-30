@@ -6,7 +6,7 @@ use std::{
 };
 use tokio::sync::Mutex;
 
-use super::Store;
+use crate::Store;
 
 #[derive(Clone, Debug)]
 struct MapValue {
