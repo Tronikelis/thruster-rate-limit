@@ -15,6 +15,7 @@ Currently supports only the hyper backend of thruster, basically `hyper_server` 
   - [Options](#options)
   - [Configuration](#configuration)
   - [Stores](#stores)
+  - [Different routes, different settings](#different-routes-different-settings)
 
 
 
@@ -49,18 +50,13 @@ fn generate_context(request: HyperRequest, state: &ServerState, _path: &str) -> 
 
 #[tokio::test]
 async fn hello_world() {
-    let rate_limiter = RateLimiter {
-        max: 100,
-        per_s: 60,
-        store: MapStore::new(),
-    };
+    let rate_limiter = RateLimiter::default();
 
-    let app = App::<HyperRequest, Ctx, ServerState>::create(generate_context, ServerState { rate_limiter })
-        .middleware("/", m![rate_limit_middleware])
-        .get("/", m![root])
+    let app = create_app(ServerState { rate_limiter })
+        .get(ROUTE, m![root])
         .commit();
 
-    let response = Testable::get(&app, "/", vec![])
+    let response = Testable::get(&app, ROUTE, vec![])
         .await
         .unwrap()
         .expect_status(200, "OK");
@@ -75,13 +71,20 @@ async fn hello_world() {
 
 ```rust
 #[derive(Clone)]
-pub struct RateLimiter<S: Store + Clone> {
+pub struct Options {
     pub max: usize,
     pub per_s: usize,
+}
+
+#[derive(Clone)]
+pub struct RateLimiter<S: Store + Clone> {
+    pub options: Options,
+    pub routes: Vec<(String, Options)>,
     pub store: S,
 }
 ```
 
+- `routes`: apply different options to different routes [more info](#different-routes-different-settings)
 - `max`: maximum amount of requests allowed `per_s`
 - `per_s`: when does `max` reset
 - `store`: anything that implements the `Store` trait, [2 stores](#stores) are provided by the library
@@ -128,4 +131,18 @@ pub struct MapStore {
 pub struct RedisStore {
     connection_manager: ConnectionManager,
 }
+```
+
+## Different routes, different settings
+
+Simply put, this is useful when, for example, for a login route you want to have only 5 requests per minute.
+
+```rust
+let rate_limiter = RateLimiter::new(Options::new(1, 100), MapStore::new())
+    .override_routes(vec![
+        // Options::new(max, per_s)
+        ("/user/login".to_string(), Options::new(5, 60)),
+        // limit some expensive route for example, reset every 2 minutes
+        ("/user/:id/calculate".to_string(), Options::new(20, 60 * 2)),
+    ]);
 ```

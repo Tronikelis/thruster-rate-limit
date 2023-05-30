@@ -8,12 +8,10 @@ use thruster::{
 pub mod stores;
 use stores::Store;
 
-#[derive(Clone)]
-pub struct RateLimiter<S: Store + Clone> {
-    pub max: usize,
-    pub per_s: usize,
-    pub store: S,
-}
+mod rate_limiter;
+pub use rate_limiter::{Options, RateLimiter};
+
+mod utils;
 
 pub trait Configuration<S: Send> {
     fn should_limit(&self, _context: &TypedHyperContext<S>) -> bool {
@@ -47,29 +45,30 @@ pub async fn rate_limit_middleware<
     }
 
     let rate_limiter: &RateLimiter<S> = context.extra.get();
-    let RateLimiter {
-        mut store,
-        max,
-        per_s,
-    } = rate_limiter.clone();
+    let RateLimiter { mut store, .. } = rate_limiter.clone();
 
-    let key = "rate-limit:".to_string() + &configuration.get_key(&context);
+    let (path, options) = match rate_limiter.matches_route(context.route()) {
+        Some(x) => x,
+        None => ("".to_string(), rate_limiter.options.clone()),
+    };
+
+    let key = format!("rate-limit:{}:{}", configuration.get_key(&context), path);
 
     let current_count: Option<usize> = store.get(&key).await.unwrap();
 
     let current_count = current_count.unwrap_or(0);
     let new_count = current_count + 1;
 
-    if new_count > max {
+    if new_count > options.max {
         context.status(429);
         return Err(ThrusterError {
             cause: None,
             context,
-            message: format!("Rate limit exceeded, please wait {} seconds", per_s),
+            message: format!("Rate limit exceeded, please wait {} seconds", options.per_s),
         });
     }
 
-    store.set(&key, new_count, per_s).await.unwrap();
+    store.set(&key, new_count, options.per_s).await.unwrap();
 
     return next(context).await;
 }

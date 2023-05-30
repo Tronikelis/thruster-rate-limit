@@ -6,10 +6,11 @@ use thruster::{
 };
 
 use thruster_rate_limit::{
-    rate_limit_middleware, stores::map::MapStore, Configuration, RateLimiter,
+    rate_limit_middleware, stores::map::MapStore, Configuration, Options, RateLimiter,
 };
 
 const BODY_STR: &str = "foo";
+const ROUTE: &str = "/foo";
 
 struct ServerState {
     rate_limiter: RateLimiter<MapStore>,
@@ -42,17 +43,13 @@ fn create_app(server_state: ServerState) -> App<HyperRequest, Ctx, ServerState> 
 
 #[tokio::test]
 async fn hello_world() {
-    let rate_limiter = RateLimiter {
-        max: 100,
-        per_s: 60,
-        store: MapStore::new(),
-    };
+    let rate_limiter = RateLimiter::default();
 
     let app = create_app(ServerState { rate_limiter })
-        .get("/", m![root])
+        .get(ROUTE, m![root])
         .commit();
 
-    let response = Testable::get(&app, "/", vec![])
+    let response = Testable::get(&app, ROUTE, vec![])
         .await
         .unwrap()
         .expect_status(200, "OK");
@@ -62,25 +59,57 @@ async fn hello_world() {
 
 #[tokio::test]
 async fn simple_block() {
-    let rate_limiter = RateLimiter {
-        max: 10,
-        per_s: 100,
-        store: MapStore::new(),
-    };
+    let rate_limiter = RateLimiter::new(Options { max: 10, per_s: 10 }, MapStore::new());
 
     let app = create_app(ServerState { rate_limiter })
-        .get("/", m![root])
+        .get(ROUTE, m![root])
         .commit();
 
     for _ in 0..10 {
-        Testable::get(&app, "/", vec![])
+        Testable::get(&app, ROUTE, vec![])
             .await
             .unwrap()
             .expect_status(200, "OK");
     }
 
-    Testable::get(&app, "/", vec![])
+    Testable::get(&app, ROUTE, vec![])
         .await
         .unwrap()
         .expect_status(429, "OK");
+}
+
+#[tokio::test]
+async fn routes_option() {
+    let rate_limiter =
+        RateLimiter::new(Options::new(1, 100), MapStore::new()).override_routes(vec![
+            ("/foo".to_string(), Options::new(10, 10)),
+            ("/user/:id".to_string(), Options::new(10, 10)),
+        ]);
+
+    let app = create_app(ServerState { rate_limiter })
+        .get("/", m![root])
+        .get("/foo", m![root])
+        .get("/user/:id", m![root])
+        .commit();
+
+    for i in 0..11 {
+        Testable::get(&app, "/foo?q=q", vec![])
+            .await
+            .unwrap()
+            .expect_status(if i == 10 { 429 } else { 200 }, "OK");
+    }
+
+    for i in 0..11 {
+        Testable::get(&app, "/user/0", vec![])
+            .await
+            .unwrap()
+            .expect_status(if i == 10 { 429 } else { 200 }, "OK");
+    }
+
+    for i in 0..2 {
+        Testable::get(&app, "/", vec![])
+            .await
+            .unwrap()
+            .expect_status(if i == 1 { 429 } else { 200 }, "OK");
+    }
 }
