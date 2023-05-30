@@ -52,9 +52,13 @@ fn generate_context(request: HyperRequest, state: &ServerState, _path: &str) -> 
 async fn hello_world() {
     let rate_limiter = RateLimiter::default();
 
-    let app = create_app(ServerState { rate_limiter })
-        .get(ROUTE, m![root])
-        .commit();
+    let app = App::<HyperRequest, Ctx, ServerState>::create(
+        generate_context,
+        ServerState { rate_limiter },
+    )
+    .middleware("/", m![rate_limit_middleware])
+    .get(ROUTE, m![root])
+    .commit();
 
     let response = Testable::get(&app, ROUTE, vec![])
         .await
