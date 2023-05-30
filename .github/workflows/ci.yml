@@ -1,0 +1,18 @@
+name: Build and Release Rust Binary
+
+on: push
+
+jobs:
+    ci:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v3
+
+            - name: rust-toolchain
+              uses: actions-rs/toolchain@v1
+              with:
+                  toolchain: stable
+
+            - name: Test lib
+              run: cargo test
