@@ -8,11 +8,42 @@ use thruster::{
 pub mod stores;
 use stores::Store;
 
+mod utils;
+use utils::url::to_path_chunks;
+
 #[derive(Clone)]
 pub struct RateLimiter<S: Store + Clone> {
     pub max: usize,
     pub per_s: usize,
+    pub routes: Vec<(String, usize)>,
     pub store: S,
+}
+
+impl<S: Store + Clone> RateLimiter<S> {
+    fn matches_route(&self, target: &str) -> Option<(String, usize)> {
+        'outer: for (path, max) in &self.routes {
+            let target_parts: Vec<_> = to_path_chunks(target).unwrap();
+            let self_parts: Vec<_> = to_path_chunks(path).unwrap();
+
+            if target_parts.len() != self_parts.len() {
+                continue;
+            }
+
+            for (i, self_part) in self_parts.iter().enumerate() {
+                if self_part.starts_with(':') {
+                    continue;
+                }
+
+                if self_part != target_parts.get(i).unwrap() {
+                    continue 'outer;
+                }
+            }
+
+            return Some((path.clone(), *max));
+        }
+
+        return None;
+    }
 }
 
 pub trait Configuration<S: Send> {
@@ -48,12 +79,15 @@ pub async fn rate_limit_middleware<
 
     let rate_limiter: &RateLimiter<S> = context.extra.get();
     let RateLimiter {
-        mut store,
-        max,
-        per_s,
+        mut store, per_s, ..
     } = rate_limiter.clone();
 
-    let key = "rate-limit:".to_string() + &configuration.get_key(&context);
+    let (path, max) = match rate_limiter.matches_route(context.route()) {
+        Some((path, max)) => (path, max),
+        None => ("".to_string(), rate_limiter.max),
+    };
+
+    let key = format!("rate-limit:{}:{}", configuration.get_key(&context), path);
 
     let current_count: Option<usize> = store.get(&key).await.unwrap();
 

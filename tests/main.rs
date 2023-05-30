@@ -10,6 +10,7 @@ use thruster_rate_limit::{
 };
 
 const BODY_STR: &str = "foo";
+const ROUTE: &str = "/foo";
 
 struct ServerState {
     rate_limiter: RateLimiter<MapStore>,
@@ -45,14 +46,15 @@ async fn hello_world() {
     let rate_limiter = RateLimiter {
         max: 100,
         per_s: 60,
+        routes: vec![],
         store: MapStore::new(),
     };
 
     let app = create_app(ServerState { rate_limiter })
-        .get("/", m![root])
+        .get(ROUTE, m![root])
         .commit();
 
-    let response = Testable::get(&app, "/", vec![])
+    let response = Testable::get(&app, ROUTE, vec![])
         .await
         .unwrap()
         .expect_status(200, "OK");
@@ -65,22 +67,53 @@ async fn simple_block() {
     let rate_limiter = RateLimiter {
         max: 10,
         per_s: 100,
+        routes: vec![],
         store: MapStore::new(),
     };
 
     let app = create_app(ServerState { rate_limiter })
-        .get("/", m![root])
+        .get(ROUTE, m![root])
         .commit();
 
     for _ in 0..10 {
-        Testable::get(&app, "/", vec![])
+        Testable::get(&app, ROUTE, vec![])
             .await
             .unwrap()
             .expect_status(200, "OK");
     }
 
-    Testable::get(&app, "/", vec![])
+    Testable::get(&app, ROUTE, vec![])
         .await
         .unwrap()
         .expect_status(429, "OK");
+}
+
+#[tokio::test]
+async fn routes_option() {
+    let rate_limiter = RateLimiter {
+        max: 1,
+        per_s: 100,
+        routes: vec![("/foo".to_string(), 10), ("/user/:id".to_string(), 10)],
+        store: MapStore::new(),
+    };
+
+    let app = create_app(ServerState { rate_limiter })
+        .get("/", m![root])
+        .get("/foo", m![root])
+        .get("/user/:id", m![root])
+        .commit();
+
+    for i in 0..11 {
+        Testable::get(&app, "/foo?q=q", vec![])
+            .await
+            .unwrap()
+            .expect_status(if i == 10 { 429 } else { 200 }, "OK");
+    }
+
+    for i in 0..11 {
+        Testable::get(&app, "/user/0", vec![])
+            .await
+            .unwrap()
+            .expect_status(if i == 10 { 429 } else { 200 }, "OK");
+    }
 }
