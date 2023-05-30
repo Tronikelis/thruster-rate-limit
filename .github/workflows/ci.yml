@@ -1,4 +1,4 @@
-name: Build and Release Rust Binary
+name: CI
 
 on: push
 
